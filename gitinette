@@ -42,7 +42,7 @@ def git(repo, *args):
 
 
 def list_commits(repo, base_branch):
-    log = git(repo, "log", base_branch, "--first-parent", "--pretty=format:%H%x01%P%x01%s")
+    log = git(repo, "log", base_branch, "--pretty=format:%H%x01%P%x01%s")
     commits = []
     if not log:
         return commits
@@ -87,13 +87,18 @@ def check_branch_names(branches, base_branch):
     return violations
 
 
-def check_merge_strategy(commits, base_branch):
+def check_merge_strategy(commits, base_branch, repo):
     warnings = []
     merge_count = sum(1 for c in commits if len(c["parents"]) > 1)
+    
+    fp_out = git(repo, "log", base_branch, "--first-parent", "--format=%H")
+    fp_hashes = set(fp_out.split())
+
     direct_commits = [
         c for c in commits
-        if len(c["parents"]) == 1
+        if c["hash"] in fp_hashes and len(c["parents"]) == 1
     ]
+    
     if merge_count == 0 and len(commits) > 5:
         warnings.append(
             f"no merge commits found on {base_branch}: history looks fully "
@@ -142,7 +147,7 @@ def main():
     violations = []
     violations += check_commit_messages(commits)
     violations += check_branch_names(branches, args.base_branch)
-    warnings = check_merge_strategy(commits, args.base_branch)
+    warnings = check_merge_strategy(commits, args.base_branch, args.repo)
 
     if violations:
         print("Violations:")
