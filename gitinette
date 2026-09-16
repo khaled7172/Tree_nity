@@ -42,7 +42,7 @@ def git(repo, *args):
 
 
 def list_commits(repo, base_branch):
-    log = git(repo, "log", base_branch, "--pretty=format:%H%x01%P%x01%s")
+    log = git(repo, "log", base_branch, "--first-parent", "--pretty=format:%H%x01%P%x01%s")
     commits = []
     if not log:
         return commits
