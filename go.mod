@@ -1,3 +1,3 @@
 module Tree_nity
 
-go 1.27
+go 1.27.1
