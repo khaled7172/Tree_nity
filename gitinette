@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""gitinette - checks a repository against the treenity Git Workflow Guidelines
+(subject/en.git_guidelines.tex): commit message format, branch naming, and
+merge strategy on the default branch.
+
+Usage:
+    gitinette [--repo PATH] [--base-branch NAME]
+    gitinette --evaluation [--repo PATH] [--base-branch NAME] [--sample N]
+
+Without --evaluation, gitinette runs the same checks as a student self-check
+during development. With --evaluation, it additionally prints a random sample
+of commits (default 3) with their full message and changed-files summary, so
+an evaluator can judge whether the message matches the diff.
+
+Exit codes: 0 if no violation was found, 1 otherwise.
+"""
+
+import argparse
+import random
+import re
+import subprocess
+import sys
+
+COMMIT_TYPES = (
+    "feat", "fix", "chore", "refactor", "test",
+    "docs", "style", "perf", "build", "ci", "revert",
+)
+COMMIT_RE = re.compile(
+    r"^(" + "|".join(COMMIT_TYPES) + r")(\([\w\-./]+\))?!?: .+"
+)
+BRANCH_RE = re.compile(
+    r"^(" + "|".join(COMMIT_TYPES) + r")/[\w\-./]+$"
+)
+
+
+def git(repo, *args):
+    result = subprocess.run(
+        ["git", "-C", repo, *args],
+        capture_output=True, text=True, check=True,
+    )
+    return result.stdout.strip()
+
+
+def list_commits(repo, base_branch):
+    log = git(repo, "log", base_branch, "--pretty=format:%H%x01%P%x01%s")
+    commits = []
+    if not log:
+        return commits
+    for line in log.split("\n"):
+        commit_hash, parents, subject = line.split("\x01", 2)
+        commits.append({
+            "hash": commit_hash,
+            "parents": parents.split() if parents else [],
+            "subject": subject,
+        })
+    return commits
+
+
+def list_branches(repo):
+    out = git(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+    return [b for b in out.split("\n") if b]
+
+
+def check_commit_messages(commits):
+    violations = []
+    for c in commits:
+        if len(c["parents"]) > 1:
+            continue  # merge commits are not held to the conventional format
+        if not COMMIT_RE.match(c["subject"]):
+            violations.append(
+                f"{c['hash'][:8]}  \"{c['subject']}\" does not follow "
+                f"Conventional Commits (type(scope): summary)"
+            )
+    return violations
+
+
+def check_branch_names(branches, base_branch):
+    violations = []
+    for b in branches:
+        if b in (base_branch, "main", "master"):
+            continue
+        if not BRANCH_RE.match(b):
+            violations.append(
+                f"branch \"{b}\" does not match <type>/<name> "
+                f"(e.g. feat/producer-client)"
+            )
+    return violations
+
+
+def check_merge_strategy(commits, base_branch):
+    warnings = []
+    merge_count = sum(1 for c in commits if len(c["parents"]) > 1)
+    direct_commits = [
+        c for c in commits
+        if len(c["parents"]) == 1
+    ]
+    if merge_count == 0 and len(commits) > 5:
+        warnings.append(
+            f"no merge commits found on {base_branch}: history looks fully "
+            "linear, which suggests fast-forward or squash merges instead "
+            "of `git merge --no-ff`"
+        )
+    if direct_commits:
+        warnings.append(
+            f"{len(direct_commits)} commit(s) landed directly on "
+            f"{base_branch} outside of a merge commit - confirm each one is "
+            "a small non-breaking fix (typo, doc, trivial correction)"
+        )
+    return warnings
+
+
+def sample_commits(repo, commits, count):
+    non_merge = [c for c in commits if len(c["parents"]) <= 1]
+    picked = random.sample(non_merge, min(count, len(non_merge)))
+    for c in picked:
+        print(f"\n--- commit {c['hash'][:8]} ---")
+        print(git(repo, "show", "--stat", "--format=%B", c["hash"]))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo", default=".", help="path to the git repository")
+    parser.add_argument("--base-branch", default="main",
+                         help="default/integration branch (default: main)")
+    parser.add_argument("--evaluation", action="store_true",
+                         help="print a random commit sample for manual review")
+    parser.add_argument("--sample", type=int, default=3,
+                         help="number of commits to sample with --evaluation")
+    args = parser.parse_args()
+
+    try:
+        commits = list_commits(args.repo, args.base_branch)
+        branches = list_branches(args.repo)
+    except subprocess.CalledProcessError as exc:
+        print(f"gitinette: {exc.stderr.strip()}", file=sys.stderr)
+        return 1
+
+    if not commits:
+        print(f"gitinette: no commits found on {args.base_branch}", file=sys.stderr)
+        return 1
+
+    violations = []
+    violations += check_commit_messages(commits)
+    violations += check_branch_names(branches, args.base_branch)
+    warnings = check_merge_strategy(commits, args.base_branch)
+
+    if violations:
+        print("Violations:")
+        for v in violations:
+            print(f"  - {v}")
+    if warnings:
+        print("Warnings (manual review needed):")
+        for w in warnings:
+            print(f"  - {w}")
+    if not violations and not warnings:
+        print(f"gitinette: {args.base_branch} respects the Git Workflow Guidelines")
+
+    if args.evaluation:
+        print(f"\nRandom sample of {args.sample} commit(s) for manual "
+              "message/diff coherence review:")
+        sample_commits(args.repo, commits, args.sample)
+
+    return 1 if violations else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
