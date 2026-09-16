@@ -1,0 +1,16 @@
+# Project Binaries (required by Makefile)
+/server
+/client
+
+# Local testing and scratch folders (add your custom folders here)
+/local_tests/
+/scratch/
+/tmp/
+/useless_stuff/
+/nopush/
+
+# Go test outputs
+*.test
+*.out
+coverage.txt
+c.out
