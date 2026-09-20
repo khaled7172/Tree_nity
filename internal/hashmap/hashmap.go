@@ -18,14 +18,24 @@ type ClientMap interface {
 	UpdateOffset(clientID string, newOffset uint32) error
 }
 
+type Node struct {
+	Client ClientMetadata
+	Next   *Node
+}
+
 type Map struct {
-	mu sync.RWMutex
+	mu      sync.RWMutex
+	buckets []*Node
+	size    uint32
 }
 
 var _ ClientMap = (*Map)(nil)
 
 func New() *Map {
-	return &Map{}
+	return &Map{
+		buckets: make([]*Node, 16), // Start with 16 empty buckets
+		size:    0,                 // 0 clients currently stored
+	}
 }
 
 func (m *Map) Put(client ClientMetadata) error {
