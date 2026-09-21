@@ -39,15 +39,88 @@ func New() *Map {
 }
 
 func (m *Map) Put(client ClientMetadata) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	hash := hashFNV1a(client.ClientID)
+	bucketIndex := hash % uint64(len(m.buckets))
+
+	current := m.buckets[bucketIndex]
+	for current != nil {
+		if current.Client.ClientID == client.ClientID {
+			current.Client = client
+			return nil
+		}
+		current = current.Next
+	}
+
+	newNode := &Node{
+		Client: client,
+		Next:   m.buckets[bucketIndex],
+	}
+	m.buckets[bucketIndex] = newNode
+	m.size++
+
 	return nil
 }
 
 func (m *Map) Get(clientID string) (ClientMetadata, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	hash := hashFNV1a(clientID)
+	bucketIndex := hash % uint64(len(m.buckets))
+
+	current := m.buckets[bucketIndex]
+	for current != nil {
+		if current.Client.ClientID == clientID {
+			return current.Client, true
+		}
+		current = current.Next
+	}
+
 	return ClientMetadata{}, false
 }
 
-func (m *Map) Remove(clientID string) {}
+func (m *Map) Remove(clientID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	hash := hashFNV1a(clientID)
+	bucketIndex := hash % uint64(len(m.buckets))
+
+	current := m.buckets[bucketIndex]
+	var prev *Node
+
+	for current != nil {
+		if current.Client.ClientID == clientID {
+			if prev == nil {
+				m.buckets[bucketIndex] = current.Next
+			} else {
+				prev.Next = current.Next
+			}
+			m.size--
+			return
+		}
+		prev = current
+		current = current.Next
+	}
+}
 
 func (m *Map) UpdateOffset(clientID string, newOffset uint32) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	hash := hashFNV1a(clientID)
+	bucketIndex := hash % uint64(len(m.buckets))
+
+	current := m.buckets[bucketIndex]
+	for current != nil {
+		if current.Client.ClientID == clientID {
+			current.Client.Offset = newOffset
+			return nil
+		}
+		current = current.Next
+	}
 	return nil
 }
