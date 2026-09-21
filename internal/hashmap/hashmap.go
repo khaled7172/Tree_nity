@@ -42,6 +42,10 @@ func (m *Map) Put(client ClientMetadata) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.size >= uint32(len(m.buckets)*3/4) {
+		m.resize()
+	}
+
 	hash := hashFNV1a(client.ClientID)
 	bucketIndex := hash % uint64(len(m.buckets))
 
@@ -123,4 +127,26 @@ func (m *Map) UpdateOffset(clientID string, newOffset uint32) error {
 		current = current.Next
 	}
 	return nil
+}
+
+func (m *Map) resize() {
+	newCapacity := len(m.buckets) * 2
+	newBuckets := make([]*Node, newCapacity)
+
+	for i := 0; i < len(m.buckets); i++ {
+		current := m.buckets[i]
+		for current != nil {
+			next := current.Next
+
+			hash := hashFNV1a(current.Client.ClientID)
+			newIndex := hash % uint64(newCapacity)
+
+			current.Next = newBuckets[newIndex]
+			newBuckets[newIndex] = current
+
+			current = next
+		}
+	}
+
+	m.buckets = newBuckets
 }
