@@ -2,6 +2,7 @@ package hashmap
 
 import (
 	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -68,5 +69,37 @@ func TestHashmapDynamicResizing(t *testing.T) {
 	}
 	if client.Topic != "general" {
 		t.Errorf("Data corrupted during resize, expected topic 'general', got '%s'", client.Topic)
+	}
+}
+
+func TestHashmapConcurrency(t *testing.T) {
+	m := New()
+	var wg sync.WaitGroup
+
+	// Spin up 100 simultaneous goroutines (threads)
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			
+			clientID := "user_" + strconv.Itoa(id)
+			
+			// Simultaneously Write
+			m.Put(ClientMetadata{ClientID: clientID, Topic: "spam"})
+			
+			// Simultaneously Read
+			_, _ = m.Get(clientID)
+			
+			// Simultaneously Update
+			_ = m.UpdateOffset(clientID, 10)
+		}(i)
+	}
+
+	// Wait for all 100 goroutines to finish crashing into the map
+	wg.Wait()
+
+	// If the test reaches this line without panicking, the Mutex successfully protected the memory!
+	if m.size != 100 {
+		t.Errorf("Expected map size to be 100, got %d", m.size)
 	}
 }
