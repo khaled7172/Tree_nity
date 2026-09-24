@@ -66,5 +66,34 @@ func (t *PrefixTrie) Add(prefix string, clientID string) {
 func (t *PrefixTrie) Remove(prefix string, clientID string) {}
 
 func (t *PrefixTrie) Match(messageKey string) []string {
-	return nil
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	unique := make(map[string]struct{})
+	var result []string
+
+	add := func(id string) {
+		if _, exists := unique[id]; !exists {
+			unique[id] = struct{}{}
+			result = append(result, id)
+		}
+	}
+
+	for _, id := range t.GlobalSubscribers {
+		add(id)
+	}
+
+	curr := t.Root
+	for _, ch := range messageKey {
+		next, exists := curr.Children[ch]
+		if !exists {
+			break
+		}
+		curr = next
+		for _, id := range curr.Subscribers {
+			add(id)
+		}
+	}
+
+	return result
 }
