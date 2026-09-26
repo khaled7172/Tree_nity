@@ -1,29 +1,40 @@
 package topic
 
+import "sync"
+
 type Message struct {
-	Offset uint32
-	Key    []byte
-	Value  []byte
+	Offset  uint32
+	Payload []byte
 }
 
-type TopicBuffer interface {
-	Append(key, value []byte) uint32
-	ReadFrom(offset uint32) []Message
+type TopicData struct {
+	mu         sync.RWMutex
+	Messages   []Message
+	NextOffset uint32
 }
 
-type Buffer struct {
+type TopicStore interface {
+	Append(topic string, payload []byte) uint32
+	ReadFrom(topic string, offset uint32) []Message
 }
 
-var _ TopicBuffer = (*Buffer)(nil)
-
-func New() *Buffer {
-	return &Buffer{}
+type Store struct {
+	mu     sync.RWMutex
+	topics map[string]*TopicData
 }
 
-func (b *Buffer) Append(key, value []byte) uint32 {
+var _ TopicStore = (*Store)(nil)
+
+func New() *Store {
+	return &Store{
+		topics: make(map[string]*TopicData),
+	}
+}
+
+func (s *Store) Append(topic string, payload []byte) uint32 {
 	return 0
 }
 
-func (b *Buffer) ReadFrom(offset uint32) []Message {
+func (s *Store) ReadFrom(topic string, offset uint32) []Message {
 	return nil
 }
