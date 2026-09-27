@@ -14,7 +14,7 @@ func MakeFifo(path string) error {
 	}
 
 	if err := syscall.Mkfifo(path, DefaultFIFOMode); err != nil {
-		return fmt.Errorf("mkdifof %q: %w", path, err)
+		return fmt.Errorf("mkfifo %q: %w", path, err)
 	}
 	return nil
 }
