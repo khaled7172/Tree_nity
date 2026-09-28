@@ -32,7 +32,31 @@ func New() *Store {
 }
 
 func (s *Store) Append(topic string, payload []byte) uint32 {
-	return 0
+	s.mu.RLock()
+	td, exists := s.topics[topic]
+	s.mu.RUnlock()
+
+	if !exists {
+		s.mu.Lock()
+		td, exists = s.topics[topic]
+		if !exists {
+			td = &TopicData{}
+			s.topics[topic] = td
+		}
+		s.mu.Unlock()
+	}
+
+	td.mu.Lock()
+	defer td.mu.Unlock()
+
+	offset := td.NextOffset
+	td.Messages = append(td.Messages, Message{
+		Offset:  offset,
+		Payload: payload,
+	})
+	td.NextOffset++
+
+	return offset
 }
 
 func (s *Store) ReadFrom(topic string, offset uint32) []Message {

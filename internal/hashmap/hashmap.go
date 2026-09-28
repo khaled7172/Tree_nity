@@ -33,8 +33,8 @@ var _ ClientMap = (*Map)(nil)
 
 func New() *Map {
 	return &Map{
-		buckets: make([]*Node, 16), // Start with 16 empty buckets
-		size:    0,                 // 0 clients currently stored
+		buckets: make([]*Node, 16),
+		size:    0,
 	}
 }
 
