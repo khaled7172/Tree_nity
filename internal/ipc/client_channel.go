@@ -40,7 +40,7 @@ func NewConsumerChannel(serverPID int, clientID string) (*ConsumerChannel, error
 	file, err := os.OpenFile(path, os.O_RDWR, 0660)
 	if err != nil {
 		_ = RemoveFifo(path)
-		return nil, fmt.Errorf("open consumer fifo: %q: %w", err)
+		return nil, fmt.Errorf("open consumer fifo: %q: %w", path, err)
 	}
 
 	return &ConsumerChannel{
@@ -91,31 +91,31 @@ func (c *ConsumerChannel) Close() error {
 }
 
 func WriteReply(ctx context.Context, replyPath string, response []byte) error {
-	type openResult struct {
-		file *os.File
-		err error
-	}
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
 
-	resChan := make(chan openResult, 1)
+	for {
+		fd, err := syscall.Open(replyPath, syscall.O_WRONLY|syscall.O_NONBLOCK, 0660)
+		if err == nil {
+			_ = syscall.SetNonblock(fd, false)
+			file := os.NewFile(uintptr(fd), replyPath)
+			defer file.Close()
 
-	go func() {
-		f, err := os.OpenFile(replyPath, os.O_WRONLY, 0660)
-		resChan <- openResult{file: f, err: err}
-	}()
-
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("timeout waiting for client reply reader %q: %w", replyPath, ctx.Err())
-	case res := <- resChan:
-		if res.err != nil {
-			return fmt.Errorf("open reply fifo %q: %w", replyPath, res.err)
+			if _, err := file.Write(response); err != nil {
+				return fmt.Errorf("write response to %q: %w", replyPath, err)
+			}
+			return nil
 		}
-		defer res.file.Close()
 
-		if _, err := res.file.Write(response); err != nil {
-			return fmt.Errorf("write response to %q: %w", replyPath, err)
+		if !errors.Is(err, syscall.ENXIO) {
+			return fmt.Errorf("open reply fifo %q: %w", replyPath, err)
 		}
-		return nil
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for client reply reader %q: %w", replyPath, ctx.Err())
+		case <-ticker.C:
+		}
 	}
 }
 
