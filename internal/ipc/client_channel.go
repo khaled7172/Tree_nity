@@ -87,6 +87,7 @@ func (c *ConsumerChannel) Close() error {
 	if closeErr != nil {
 		return closeErr
 	}
+	return removeErr
 }
 
 func WriteReply(ctx context.Context, replyPath string, response []byte) error {
