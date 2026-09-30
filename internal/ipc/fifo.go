@@ -1,8 +1,8 @@
 package ipc
 
 import (
-	"os"
 	"fmt"
+	"os"
 	"syscall"
 )
 

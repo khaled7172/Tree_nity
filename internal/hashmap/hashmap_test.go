@@ -81,15 +81,15 @@ func TestHashmapConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
+
 			clientID := "user_" + strconv.Itoa(id)
-			
+
 			// Simultaneously Write
 			m.Put(ClientMetadata{ClientID: clientID, Topic: "spam"})
-			
+
 			// Simultaneously Read
 			_, _ = m.Get(clientID)
-			
+
 			// Simultaneously Update
 			_ = m.UpdateOffset(clientID, 10)
 		}(i)

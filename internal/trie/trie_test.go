@@ -46,7 +46,7 @@ func TestTrieRemoveAndPruning(t *testing.T) {
 
 	// 2. Remove Bob and test ghost branch pruning
 	tr.Remove("car", "Bob")
-	
+
 	// Since 'car' is empty, the 'r' node should be deleted from 'a'.Children
 	// But 'c' and 'a' should still exist because Alice is subscribed to 'cat'
 	aNode := tr.Root.Children['c'].Children['a']
@@ -74,13 +74,13 @@ func TestTrieConcurrency(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			clientID := "user_" + strconv.Itoa(id)
-			
+
 			// Simultaneously Write
 			tr.Add("spam.topic", clientID)
-			
+
 			// Simultaneously Read
 			_ = tr.Match("spam.topic.sub")
-			
+
 			// Simultaneously Delete
 			tr.Remove("spam.topic", clientID)
 		}(i)
@@ -89,7 +89,7 @@ func TestTrieConcurrency(t *testing.T) {
 	wg.Wait()
 
 	// If the mutex locks work, it won't crash.
-	// Furthermore, since every thread added and then removed itself, 
+	// Furthermore, since every thread added and then removed itself,
 	// the tree should have perfectly pruned itself back to zero!
 	if len(tr.Root.Children) != 0 {
 		t.Errorf("Expected completely pruned root after concurrent stress test, got %d branches", len(tr.Root.Children))

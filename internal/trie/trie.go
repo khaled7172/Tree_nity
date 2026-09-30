@@ -67,11 +67,9 @@ func (t *PrefixTrie) Remove(prefix string, clientID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	// 1. Handle Global Subscribers
 	if prefix == "" {
 		for i, id := range t.GlobalSubscribers {
 			if id == clientID {
-				// Fast O(1) removal by swapping with the last element
 				lastIdx := len(t.GlobalSubscribers) - 1
 				t.GlobalSubscribers[i] = t.GlobalSubscribers[lastIdx]
 				t.GlobalSubscribers = t.GlobalSubscribers[:lastIdx]
@@ -81,7 +79,6 @@ func (t *PrefixTrie) Remove(prefix string, clientID string) {
 		return
 	}
 
-	// 2. Traverse and record the path for potential pruning
 	path := make([]*TrieNode, 0, len(prefix)+1)
 	curr := t.Root
 	path = append(path, curr)
@@ -89,13 +86,12 @@ func (t *PrefixTrie) Remove(prefix string, clientID string) {
 	for _, ch := range prefix {
 		next, exists := curr.Children[ch]
 		if !exists {
-			return // Prefix doesn't even exist in the tree
+			return
 		}
 		curr = next
 		path = append(path, curr)
 	}
 
-	// 3. Remove the clientID from the final node's Subscribers
 	targetNode := path[len(path)-1]
 	found := false
 	for i, id := range targetNode.Subscribers {
@@ -109,20 +105,18 @@ func (t *PrefixTrie) Remove(prefix string, clientID string) {
 	}
 
 	if !found {
-		return // Client wasn't subscribed here
+		return
 	}
 
-	// 4. Prune "Ghost Branches" going backwards
 	for i := len(path) - 1; i > 0; i-- {
 		child := path[i]
 		parent := path[i-1]
 		ch := rune(prefix[i-1])
 
-		// If the node is completely empty (no subscribers, no children)
 		if len(child.Subscribers) == 0 && len(child.Children) == 0 {
-			delete(parent.Children, ch) // Delete the branch from RAM
+			delete(parent.Children, ch)
 		} else {
-			break // Stop pruning if the node is still being used by others
+			break
 		}
 	}
 }
