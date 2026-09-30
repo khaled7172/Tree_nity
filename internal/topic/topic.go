@@ -60,5 +60,23 @@ func (s *Store) Append(topic string, payload []byte) uint32 {
 }
 
 func (s *Store) ReadFrom(topic string, offset uint32) []Message {
-	return nil
+	s.mu.RLock()
+	td, exists := s.topics[topic]
+	s.mu.RUnlock()
+
+	if !exists {
+		return nil
+	}
+
+	td.mu.RLock()
+	defer td.mu.RUnlock()
+
+	if offset >= uint32(len(td.Messages)) {
+		return nil
+	}
+
+	result := make([]Message, len(td.Messages)-int(offset))
+	copy(result, td.Messages[offset:])
+
+	return result
 }
