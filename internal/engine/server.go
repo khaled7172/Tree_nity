@@ -160,7 +160,7 @@ func (s *Server) handleCreate(req protocol.Request) {
 }
 
 func (s *Server) handleList(req protocol.Request) {
-	s.mu.Lock()
+	s.mu.RLock()
 	topics := make([]string, 0, len(s.topicWorkers))
 	for name := range s.topicWorkers {
 		topics = append(topics, name)
@@ -275,7 +275,7 @@ func (s *Server) handleSubscribe(req protocol.Request) {
 	s.sendReply(req.ReplyFIFO, protocol.Response{
 		Success: true,
 		ExitCode: protocol.ExitSuccess,
-		Message: fmt.Sprint("subscribed to %s", req.Topic),
+		Message: fmt.Sprintf("subscribed to %s", req.Topic),
 	})
 }
 
