@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 	"Tree_nity/internal/engine"
 	"Tree_nity/internal/hashmap"
 	"Tree_nity/internal/topic"
@@ -25,9 +26,9 @@ func main() {
 	}
 
 	<-ctx.Done()
-
-	if err := server.Stop(); err != nil {
-		fmt.Fprintf(os.Stderr, "error stopping server: %v\n", err)
+	
+	if err := server.Shutdown(5 * time.Second); err != nil {
+		fmt.Fprintf(os.Stderr, "error during server shutdown %v\n", err)
 		os.Exit(1)
 	}
 }

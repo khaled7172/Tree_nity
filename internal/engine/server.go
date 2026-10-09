@@ -69,6 +69,12 @@ func (s *Server) dispatchLoop() {
 	scanner.Buffer(buf, len(buf))
 
 	for scanner.Scan() {
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+		}
+
 		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
@@ -107,6 +113,7 @@ func (s *Server) Stop() error {
 	s.cancel()
 
 	if s.file != nil {
+		_, _ = s.file.Write([]byte("{}\n"))
 		_ = s.file.Close()
 	}
 
@@ -120,7 +127,7 @@ func (s *Server) Stop() error {
 	}
 
 	for _, ch := range s.consumers {
-		ch.Close()
+		_ = ch.Close()
 	}
 
 	return ipc.RemoveFifo(s.Endpoint)
