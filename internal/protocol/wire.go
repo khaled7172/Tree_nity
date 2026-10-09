@@ -3,6 +3,7 @@ package protocol
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -77,4 +78,50 @@ func DecodeTextMessage(r *bufio.Reader) ([]byte, []byte, error) {
 	}
 
 	return key, value, nil
+}
+
+func EncodeBinaryProducer(w io.Writer, key, value []byte) error {
+	if len(key)+len(value) > MaxMessagePayload {
+		return ErrPayLoadTooLarge
+	}
+
+	header := make([]byte, 8)
+	binary.LittleEndian.PutUnit32(header[0:4], unit32(len(key)))
+	binary.LittleEndian.PutUint32(header[4:8], unit32(len(value)))
+
+	if _, err := w.Write(header[0:4]); err != nil {
+		return err
+	}
+	if _, err := w.Write(key); err != nil {
+		return err
+	}
+	if _, err := w.Write(header[4:8]); err != nil {
+		return err
+	}
+	if _, err := w.Write(value); err != nil {
+		return err
+	}
+	return nil
+}
+
+func DecodeBinaryProducer(r io.Reader) ([]byte, []byte, error) {
+	var KeyLen uint32
+	err := binary.Read(r, binary.LittleEndian, &KeyLen)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, nil, io.EOF // clean eod stream ended before any bytes of a new record
+		}
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			return nil, nil, ErrPartialRecord
+		}
+		return nil, nil, err
+	}
+
+	key := make([]byte, keyLen)
+	if _, err := io.ReadFull(r, key); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return nil, nil, ErrPartialRecord
+		}
+		return nil, nil, err
+	}
 }
