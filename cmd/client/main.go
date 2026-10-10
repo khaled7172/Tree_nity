@@ -1,90 +1,106 @@
 package main
 
 import (
-	"Tree_nity/internal/ipc"
-	"Tree_nity/internal/protocol"
-	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
+
+	"Tree_nity/internal/ipc"
+	"Tree_nity/internal/protocol"
 )
 
-var replySeq uint64
-
-func sendRequest(serverFIFO string, req protocol.Request) (protocol.Response, error) {
-	var resp protocol.Response
-
-	// generate a unique path for out private reply fifo: /tmp/operator.client.<PID>.<seq>
-
-	seq := atomic.AddUint(&replySeq, 1)
-	replyPath := ipc.ClientReplyEndpoint(os.Getpid(), seq)
-
-	// create the reply FIFO on disk
-	if err := ipc.MakeFifo(replyPath); err != nil {
-		return resp, fmt.Errorf("create reply fifo: %w", err)
-	}
-	// guarantee that this pipe is deleted from disk when this function returns
-	defer ipc.RemoveFifo(replyPath)
-
-	// attach our reply pipe to the request so the server knows where to reply
-	req.ReplyFIFO = replyPath
-
-	// convert the request struct into a single JSON line ending in \n
-	data, err := json.Marshal(req)
-	if err != nil {
-		return resp, fmt.Errorf("marshal request: %w", err)
-	}
-	data = append(data, '\n')
-	writer, err := ipc.OpenWriter(serverFIFO)
-	if err != nil {
-		return resp, fmt.Errorf("open server fifo: %w", err)
-	}
-	if _, err := writer.Write(data); err != nil {
-		_ = writer.Close()
-		return resp, fmt.Errorf("write to server fifo: %w", err)
-	}
-	_ = writer.Close()
-
-	// open our private reply FIFO to catch the sever's response
-	reader, err := ipc.OpenReader(replyPath)
-	if err != nil {
-		return resp, fmt.Errorf("open reply fifo: %w", err)
-	}
-	defer := bufio.NewScanner(reader)
-	if !scanner.Scan() {
-	    return resp, fmt.Errorf("no response received from server")
+func main() {
+	// Usage: ./client <ipc_identifier> <command> [args...]
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "usage: %s <ipc_identifier> <create|list|info|produce|subscribe> [args...]\n", os.Args[0])
+		os.Exit(protocol.ExitGeneral) // Exit 1
 	}
 
-	if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil {
-	    return resp, fmr.Errorf("unmarshal response: %w", err
+	serverFIFO := os.Args[1]
+	command := os.Args[2]
+
+	// Verify that the provided IPC identifier exists and is a valid FIFO pipe
+	if !ipc.IsFifo(serverFIFO) {
+		fmt.Fprintf(os.Stderr, "error: invalid ipc identifier: %s is not a FIFO\n", serverFIFO)
+		os.Exit(protocol.ExitGeneral) // Exit 1 (Highest precedence)
 	}
 
-	return resp, nil
-}
+	switch command {
+	case "create":
+		if len(os.Args) < 4 {
+			fmt.Fprintf(os.Stderr, "usage: %s <ipc> create <topic_name>\n", os.Args[0])
+			os.Exit(protocol.ExitGeneral)
+		}
+		runCreate(serverFIFO, os.Args[3])
 
+	case "list":
+		runList(serverFIFO)
 
-func runCreate(serverFIFO, topic string){
-    // rule: validate topic name format
+	case "info":
+		if len(os.Args) < 4 {
+			fmt.Fprintf(os.Stderr, "usage: %s <ipc> info <subscriber_name>\n", os.Args[0])
+			os.Exit(protocol.ExitGeneral)
+		}
+		runInfo(serverFIFO, os.Args[3])
 
-    if !protocol.ValidateIdentifier(topic) {
-        fmt.Fprintf(os.Stderr, "error: invalid topic name: %s\n", topic)
-        os.Exit(protocol.ExitGeneral) // 1
-    }
+	case "produce":
+		if len(os.Args) < 4 {
+			fmt.Fprintf(os.Stderr, "usage: %s <ipc> produce <topic_name> [--raw]\n", os.Args[0])
+			os.Exit(protocol.ExitGeneral)
+		}
+		topic := os.Args[3]
+		isRaw := false
+		for _, arg := range os.Args[4:] {
+			if arg == "--raw" {
+				isRaw = true
+			}
+		}
+		runProduce(serverFIFO, topic, isRaw)
 
-    resp. err := sendRequest(serverFIFO, protocol.Request{
-        Type: protocol.CmdCreate,
-        Topic: topic,
-    })
-    if err != nil {
-        fmt.Fprinf(os.Stderr, "error: communication failure: %v\n", err)
-        os.Exit(protocol.ExitIPC) // 3
-    }
+	case "subscribe":
+		if len(os.Args) < 5 {
+			fmt.Fprintf(os.Stderr, "usage: %s <ipc> subscribe <topic_name> <subscriber_name> [--prefix <prefix>] [--offset <offset>] [--raw]\n", os.Args[0])
+			os.Exit(protocol.ExitGeneral)
+		}
+		topic := os.Args[3]
+		clientID := os.Args[4]
 
-    if ! resp.Success {
-        fmt.Fprintf(os.Stderr, "error: %s\n", resp.Message)
-        os.Exit(resp.ExitCode) // 2 already exists
-    }
+		var prefix string
+		var offset *uint32
+		isRaw := false
 
-    // output : "topic created"
-    fmt.Println("topic created")
-    os.Exit(protocol.ExitSucess) // 0
+		// Parse flags: --prefix, --offset, --raw
+		args := os.Args[5:]
+		for i := 0; i < len(args); i++ {
+			switch args[i] {
+			case "--prefix":
+				if i+1 < len(args) {
+					prefix = args[i+1]
+					i++
+				}
+			case "--offset":
+				if i+1 < len(args) {
+					val, err := strconv.ParseUint(args[i+1], 10, 32)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "error: invalid offset value: %s\n", args[i+1])
+						os.Exit(protocol.ExitGeneral)
+					}
+					uVal := uint32(val)
+					offset = &uVal
+					i++
+				}
+			case "--raw":
+				isRaw = true
+			default:
+				fmt.Fprintf(os.Stderr, "error: unknown flag %q\n", args[i])
+				os.Exit(protocol.ExitGeneral)
+			}
+		}
+
+		runSubscribe(serverFIFO, topic, clientID, prefix, offset, isRaw)
+
+	default:
+		fmt.Fprintf(os.Stderr, "error: unknown command %q\n", command)
+		os.Exit(protocol.ExitGeneral)
+	}
 }
