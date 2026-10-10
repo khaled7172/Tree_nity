@@ -49,4 +49,42 @@ func sendRequest(serverFIFO string, req protocol.Request) (protocol.Response, er
 	if err != nil {
 		return resp, fmt.Errorf("open reply fifo: %w", err)
 	}
+	defer := bufio.NewScanner(reader)
+	if !scanner.Scan() {
+	    return resp, fmt.Errorf("no response received from server")
+	}
+
+	if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil {
+	    return resp, fmr.Errorf("unmarshal response: %w", err
+	}
+
+	return resp, nil
+}
+
+
+func runCreate(serverFIFO, topic string){
+    // rule: validate topic name format
+
+    if !protocol.ValidateIdentifier(topic) {
+        fmt.Fprintf(os.Stderr, "error: invalid topic name: %s\n", topic)
+        os.Exit(protocol.ExitGeneral) // 1
+    }
+
+    resp. err := sendRequest(serverFIFO, protocol.Request{
+        Type: protocol.CmdCreate,
+        Topic: topic,
+    })
+    if err != nil {
+        fmt.Fprinf(os.Stderr, "error: communication failure: %v\n", err)
+        os.Exit(protocol.ExitIPC) // 3
+    }
+
+    if ! resp.Success {
+        fmt.Fprintf(os.Stderr, "error: %s\n", resp.Message)
+        os.Exit(resp.ExitCode) // 2 already exists
+    }
+
+    // output : "topic created"
+    fmt.Println("topic created")
+    os.Exit(protocol.ExitSucess) // 0
 }
