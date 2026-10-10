@@ -14,13 +14,13 @@ var (
 	ErrPartialRecord = errors.New("partial record at EOF")
 
 	// this is returned when key + value exceeds 1024 bytes.
-	ErrPayLoadTooLarge = errors.New("message payload exceeds maximum allowed size (1024 bytes)")
+	ErrPayloadTooLarge = errors.New("message payload exceeds maximum allowed size (1024 bytes)")
 )
 
 // writes a message in text format: key:value\n
 func EncodeTextMessage(w io.Writer, key, value []byte) error {
 	if len(key)+len(value) > MaxMessagePayload {
-		return ErrPayLoadTooLarge
+		return ErrPayloadTooLarge
 	}
 	if _, err := w.Write(key); err != nil {
 		return err
@@ -67,14 +67,14 @@ func DecodeTextMessage(r *bufio.Reader) ([]byte, []byte, error) {
 	// Find the FIRST colon ':'
 	idx := bytes.IndexByte(line, ':')
 	if idx == -1 {
-		return nil, nil, fmt.Errorf("invalid text messahe format, missing colon seperator")
+		return nil, nil, fmt.Errorf("invalid text message format, missing colon separator")
 	}
 
 	key := line[:idx]
 	value := line[idx+1:]
 
 	if len(key)+len(value) > MaxMessagePayload {
-		return nil, nil, ErrPayLoadTooLarge
+		return nil, nil, ErrPayloadTooLarge
 	}
 
 	return key, value, nil
@@ -82,12 +82,12 @@ func DecodeTextMessage(r *bufio.Reader) ([]byte, []byte, error) {
 
 func EncodeBinaryProducer(w io.Writer, key, value []byte) error {
 	if len(key)+len(value) > MaxMessagePayload {
-		return ErrPayLoadTooLarge
+		return ErrPayloadTooLarge
 	}
 
 	header := make([]byte, 8)
-	binary.LittleEndian.PutUnit32(header[0:4], unit32(len(key)))
-	binary.LittleEndian.PutUint32(header[4:8], unit32(len(value)))
+	binary.LittleEndian.PutUint32(header[0:4], uint32(len(key)))
+	binary.LittleEndian.PutUint32(header[4:8], uint32(len(value)))
 
 	if _, err := w.Write(header[0:4]); err != nil {
 		return err
@@ -105,11 +105,11 @@ func EncodeBinaryProducer(w io.Writer, key, value []byte) error {
 }
 
 func DecodeBinaryProducer(r io.Reader) ([]byte, []byte, error) {
-	var KeyLen uint32
-	err := binary.Read(r, binary.LittleEndian, &KeyLen)
+	var keyLen uint32
+	err := binary.Read(r, binary.LittleEndian, &keyLen)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
-			return nil, nil, io.EOF // clean eod stream ended before any bytes of a new record
+			return nil, nil, io.EOF // clean eof stream ended before any bytes of a new record
 		}
 		if errors.Is(err, io.ErrUnexpectedEOF) {
 			return nil, nil, ErrPartialRecord
@@ -124,4 +124,77 @@ func DecodeBinaryProducer(r io.Reader) ([]byte, []byte, error) {
 		}
 		return nil, nil, err
 	}
+
+	var valLen uint32
+	if err := binary.Read(r, binary.LittleEndian, &valLen); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return nil, nil, ErrPartialRecord
+		}
+		return nil, nil, err
+	}
+
+	if int(keyLen)+int(valLen) > MaxMessagePayload {
+		return nil, nil, ErrPayloadTooLarge
+	}
+
+	val := make([]byte, valLen)
+	if _, err := io.ReadFull(r, val); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return nil, nil, ErrPartialRecord
+		}
+		return nil, nil, err
+	}
+
+	return key, val, nil
+}
+
+func EncodeBinaryConsumer(w io.Writer, offset uint32, key, value []byte) error {
+	if len(key)+len(value) > MaxMessagePayload {
+		return ErrPayloadTooLarge
+	}
+
+	buf := make([]byte, 12)
+	binary.LittleEndian.PutUint32(buf[0:4], offset)
+	binary.LittleEndian.PutUint32(buf[4:8], uint32(len(key)))
+	binary.LittleEndian.PutUint32(buf[8:12], uint32(len(value)))
+
+	if _, err := w.Write(buf[0:4]); err != nil {
+		return err
+	}
+	if _, err := w.Write(buf[4:8]); err != nil {
+		return err
+	}
+	if _, err := w.Write(key); err != nil {
+		return err
+	}
+	if _, err := w.Write(buf[8:12]); err != nil {
+		return err
+	}
+	if _, err := w.Write(value); err != nil {
+		return err
+	}
+	return nil
+}
+
+// reads consumer message:
+func DecodeBinaryConsumer(r io.Reader) (uint32, []byte, []byte, error) {
+	var offset uint32
+	if err := binary.Read(r, binary.LittleEndian, &offset); err != nil {
+		if errors.Is(err, io.EOF) {
+			return 0, nil, nil, io.EOF
+		}
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			return 0, nil, nil, ErrPartialRecord
+		}
+		return 0, nil, nil, err
+	}
+
+	key, val, err := DecodeBinaryProducer(r)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return 0, nil, nil, ErrPartialRecord
+		}
+		return 0, nil, nil, err
+	}
+	return offset, key, val, nil
 }
