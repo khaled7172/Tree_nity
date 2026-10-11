@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -72,22 +73,20 @@ func TestTopicWorkerMessageDispatch(t *testing.T) {
 	}
 
 	buf1 := make([]byte, len(msgA.Payload))
-	n1, err := r1.Read(buf1)
-	if err != nil {
+	if _, err := io.ReadFull(r1, buf1); err != nil {
 		t.Fatalf("r1 read failed: %v", err)
 	}
-	if !bytes.Equal(buf1[:n1], msgA.Payload) {
-		t.Fatalf("ch1 expected %q, got %q", msgA.Payload, buf1[:n1])
+	if !bytes.Equal(buf1, msgA.Payload) {
+		t.Fatalf("ch1 expected %q, got %q", msgA.Payload, buf1)
 	}
 
 	expectedCh2 := append(msgA.Payload, msgB.Payload...)
 	buf2 := make([]byte, len(expectedCh2))
-	n2, err := r2.Read(buf2)
-	if err != nil {
+	if _, err := io.ReadFull(r2, buf2); err != nil {
 		t.Fatalf("r2 read failed: %v", err)
 	}
-	if !bytes.Equal(buf2[:n2], expectedCh2) {
-		t.Fatalf("ch2 expected %q, got %q", expectedCh2, buf2[:n2])
+	if !bytes.Equal(buf2, expectedCh2) {
+		t.Fatalf("ch2 expected %q, got %q", expectedCh2, buf2)
 	}
 }
 
