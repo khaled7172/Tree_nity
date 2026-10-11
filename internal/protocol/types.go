@@ -53,6 +53,8 @@ type Request struct {
 	Raw           bool        `json:"raw,omitempty"`
 	ReplyFIFO     string      `json:"reply_fifo,omitempty"`     // Ephemeral pipe for single response
 	DedicatedFIFO string      `json:"dedicated_fifo,omitempty"` // Dedicated pipe for subscribed messages
+	Key           string      `json:"key,omitempty"`
+	Payload       []byte      `json:"payload,omitempty"`
 }
 
 // Response is sent by the Server back to the Client's reply pipe

@@ -280,31 +280,49 @@ func (s *Server) handleSubscribe(req protocol.Request) {
 	s.mu.Unlock()
 
 	s.sendReply(req.ReplyFIFO, protocol.Response{
-		Success: true,
+		Success:  true,
 		ExitCode: protocol.ExitSuccess,
-		Message: fmt.Sprintf("subscribed to %s", req.Topic),
+		Message:  fmt.Sprintf("subscribed to %s", req.Topic),
+		Metadata: &protocol.ClientInfo{
+			Client: req.ClientID,
+			Topic:  req.Topic,
+			Offset: startOffset,
+			Prefix: req.Prefix,
+			IPC:    ch.Path,
+		},
 	})
 }
 
 func (s *Server) handleProduce(req protocol.Request) {
 	s.mu.RLock()
-	_, exists := s.topicWorkers[req.Topic]
+	worker, exists := s.topicWorkers[req.Topic]
 	s.mu.RUnlock()
 
 	if !exists {
-		s.sendReply(req.ReplyFIFO, protocol.Response{
-			Success: false,
-			ExitCode: protocol.ExitTopic,
-			Message: "topic does not exist",
-		})
+		if req.ReplyFIFO != "" {
+			s.sendReply(req.ReplyFIFO, protocol.Response{
+				Success: false,
+				ExitCode: protocol.ExitTopic,
+				Message: "topic does not exist",
+			})
+		}
 		return
 	}
 
-	s.sendReply(req.ReplyFIFO, protocol.Response{
-		Success: true,
-		ExitCode: protocol.ExitSuccess,
-		Message: "topic exists",
-	})
+	if req.ReplyFIFO != "" {
+		s.sendReply(req.ReplyFIFO, protocol.Response{
+			Success: true,
+			ExitCode: protocol.ExitSuccess,
+			Message: "topic exists",
+		})
+	}
+
+	if len(req.Payload) > 0 {
+		_ = worker.Publish(context.Background(), InboundMessage{
+			Key:     req.Key,
+			Payload: req.Payload,
+		})
+	}
 }
 
 func (s *Server) handleDrainAck(req protocol.Request) {
