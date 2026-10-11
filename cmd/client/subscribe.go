@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"Tree_nity/internal/ipc"
@@ -17,26 +19,10 @@ import (
 
 const ShutdownSentinel = "__TREENITY_SHUTDOWN__\n"
 
-func extractServerPID(serverFIFO string) (int, error) {
-	base := filepath.Base(serverFIFO)
-	var pid int
-	n, err := fmt.Sscanf(base, "operator.server.%d", &pid)
-	if err != nil || n != 1 {
-		return 0, fmt.Errorf("unable to extract server PID from %s", serverFIFO)
-	}
-	return pid, nil
-}
-
 func runSubscribe(serverFIFO, topic, clientID, prefix string, offset *uint32, isRaw bool) {
 	// 1. Validate topic and client ID format
 	if !protocol.ValidateIdentifier(topic) || !protocol.ValidateIdentifier(clientID) {
 		fmt.Fprintf(os.Stderr, "error: invalid topic or subscriber name\n")
-		os.Exit(protocol.ExitGeneral) // 1
-	}
-
-	serverPID, err := extractServerPID(serverFIFO)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: invalid ipc identifier: %v\n", err)
 		os.Exit(protocol.ExitGeneral) // 1
 	}
 
@@ -72,8 +58,21 @@ func runSubscribe(serverFIFO, topic, clientID, prefix string, offset *uint32, is
 	// Output (stdout) confirmation mandated by subject: "subscribed to <topic>"
 	fmt.Printf("subscribed to %s\n", topic)
 
-	// 3. Open our dedicated consumer FIFO
-	consumerPath := ipc.ConsumerEndpoint(serverPID, clientID)
+	// 3. Open dedicated consumer FIFO (use server-provided path, fallback to PID parsing)
+	consumerPath := ""
+	if resp.Metadata != nil && resp.Metadata.IPC != "" {
+		consumerPath = resp.Metadata.IPC
+	} else {
+		base := filepath.Base(serverFIFO)
+		parts := strings.Split(base, ".")
+		pid, err := strconv.Atoi(parts[len(parts)-1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: invalid ipc identifier: %s\n", serverFIFO)
+			os.Exit(protocol.ExitGeneral)
+		}
+		consumerPath = ipc.ConsumerEndpoint(pid, clientID)
+	}
+
 	reader, err := ipc.OpenReader(consumerPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: failed to open consumer channel: %v\n", err)
