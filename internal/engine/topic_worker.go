@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"Tree_nity/internal/hashmap"
 	"Tree_nity/internal/ipc"
 	"Tree_nity/internal/topic"
 	"Tree_nity/internal/trie"
@@ -25,9 +26,10 @@ type TopicWorker struct {
 	ctx			context.Context
 	cancel		context.CancelFunc
 	wg			sync.WaitGroup
+	clientMap	hashmap.ClientMap
 }
 
-func NewTopicWorker(topicName string, store topic.TopicStore, matcher trie.Matcher) *TopicWorker {
+func NewTopicWorker(topicName string, store topic.TopicStore, matcher trie.Matcher, clientMap hashmap.ClientMap) *TopicWorker {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &TopicWorker{
 		TopicName: topicName,
@@ -37,6 +39,7 @@ func NewTopicWorker(topicName string, store topic.TopicStore, matcher trie.Match
 		consumers: make(map[string]*ipc.ConsumerChannel),
 		ctx: ctx,
 		cancel: cancel,
+		clientMap: clientMap,
 	}
 }
 
@@ -56,7 +59,10 @@ func (tw *TopicWorker) processMessage(msg InboundMessage) {
 
 	for _, clientID := range matchingClientIDs {
 		if ch, exists := tw.consumers[clientID]; exists {
-			_ = ch.Push(msg.Payload)
+			if err := ch.Push(msg.Payload); err == nil {
+				_ = tw.clientMap.UpdateOffset(clientID, offset + 1)
+			}
+			
 		}
 	}
 }
@@ -101,6 +107,7 @@ func (tw *TopicWorker) Subscribe(clientID string, prefix string, startOffset uin
 		if err := ch.Push(m.Payload); err != nil {
 			return fmt.Errorf("replay consumer %q failed: %w", clientID, err)
 		}
+		_ = tw.clientMap.UpdateOffset(clientID, m.Offset + 1)
 	}
 
 	return nil

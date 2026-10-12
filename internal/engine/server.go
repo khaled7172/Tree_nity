@@ -155,7 +155,7 @@ func (s *Server) handleCreate(req protocol.Request) {
 		return
 	}
 
-	worker := NewTopicWorker(req.Topic, s.topicStore, trie.New())
+	worker := NewTopicWorker(req.Topic, s.topicStore, trie.New(), s.clientMap)
 	worker.Start()
 	s.topicWorkers[req.Topic] = worker
 
