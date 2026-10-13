@@ -57,3 +57,11 @@ func OpenWriter(path string) (*os.File, error) {
 	}
 	return file, nil
 }
+
+func OpenReaderRdwr(path string) (*os.File, error) {
+	file, err := os.OpenFile(path, syscall.O_RDWR, 0)
+	if err  != nil {
+		return nil, fmt.Errorf("open reader non rdwr %q: %w", path, err)
+	}
+	return file, nil
+}

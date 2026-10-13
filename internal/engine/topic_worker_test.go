@@ -11,12 +11,14 @@ import (
 	"Tree_nity/internal/ipc"
 	"Tree_nity/internal/topic"
 	"Tree_nity/internal/trie"
+	"Tree_nity/internal/hashmap"
 )
 
 func TestTopicWorkerMessageDispatch(t *testing.T) {
 	store := topic.New()
 	matcher := trie.New()
-	worker := NewTopicWorker("orders", store, matcher)
+	clientMap := hashmap.New()
+	worker := NewTopicWorker("orders", store, matcher, clientMap)
 	worker.Start()
 	defer worker.Stop()
 
@@ -93,7 +95,8 @@ func TestTopicWorkerMessageDispatch(t *testing.T) {
 func TestTopicWorkerHistoricalReplay(t *testing.T) {
 	store := topic.New()
 	matcher := trie.New()
-	worker := NewTopicWorker("events", store, matcher)
+	clientMap := hashmap.New()
+	worker := NewTopicWorker("events", store, matcher, clientMap)
 	worker.Start()
 	defer worker.Stop()
 

@@ -26,6 +26,12 @@ func sendRequest(serverFIFO string, req protocol.Request) (protocol.Response, er
 	}
 	defer ipc.RemoveFifo(replyPath)
 
+	reader, err := ipc.OpenReaderRdwr(replyPath)
+	if err != nil {
+		return resp, fmt.Errorf("open reply fifo non rdwr: %w", err)
+	}
+	defer reader.Close()
+
 	req.ReplyFIFO = replyPath
 
 	data, err := json.Marshal(req)
@@ -43,12 +49,6 @@ func sendRequest(serverFIFO string, req protocol.Request) (protocol.Response, er
 		return resp, fmt.Errorf("write to server fifo: %w", err)
 	}
 	_ = writer.Close()
-
-	reader, err := ipc.OpenReader(replyPath)
-	if err != nil {
-		return resp, fmt.Errorf("open reply fifo: %w", err)
-	}
-	defer reader.Close()
 
 	scanner := bufio.NewScanner(reader)
 	if !scanner.Scan() {
