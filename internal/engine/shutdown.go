@@ -21,41 +21,41 @@ func (s *Server) Shutdown(timeout time.Duration) error {
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
 
-	drainLoop:
-		for {
-			s.mu.RLock()
-			activeCount := len(s.consumers)
-			s.mu.RUnlock()
+drainLoop:
+	for {
+		s.mu.RLock()
+		activeCount := len(s.consumers)
+		s.mu.RUnlock()
 
-			if activeCount == 0 {
-				break drainLoop
-			}
-
-			select {
-			case <-drainTimer.C:
-				break drainLoop
-			case <-ticker.C:
-			}
+		if activeCount == 0 {
+			break drainLoop
 		}
 
-		s.cancel()
-		if s.file != nil {
-			_, _ = s.file.Write([]byte("{}\n"))
-			_ = s.file.Close()
+		select {
+		case <-drainTimer.C:
+			break drainLoop
+		case <-ticker.C:
 		}
-		s.wg.Wait()
+	}
 
-		s.mu.Lock()
-		defer s.mu.Unlock()
+	s.cancel()
+	if s.file != nil {
+		_, _ = s.file.Write([]byte("{}\n"))
+		_ = s.file.Close()
+	}
+	s.wg.Wait()
 
-		for _, worker := range s.topicWorkers {
-			worker.Stop()
-		}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-		for _, ch := range s.consumers {
-			_ = ch.Close()
-		}
-		s.consumers = make(map[string]*ipc.ConsumerChannel)
+	for _, worker := range s.topicWorkers {
+		worker.Stop()
+	}
 
-		return ipc.RemoveFifo(s.Endpoint)
+	for _, ch := range s.consumers {
+		_ = ch.Close()
+	}
+	s.consumers = make(map[string]*ipc.ConsumerChannel)
+
+	return ipc.RemoveFifo(s.Endpoint)
 }

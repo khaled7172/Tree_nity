@@ -16,11 +16,9 @@ var replySeq uint64
 func sendRequest(serverFIFO string, req protocol.Request) (protocol.Response, error) {
 	var resp protocol.Response
 
-	// generate a unique path for our private reply fifo: /tmp/operator.client.<PID>.<seq>
 	seq := atomic.AddUint64(&replySeq, 1)
 	replyPath := ipc.ClientReplyEndpoint(os.Getpid(), seq)
 
-	// create the reply FIFO on disk
 	if err := ipc.MakeFifo(replyPath); err != nil {
 		return resp, fmt.Errorf("create reply fifo: %w", err)
 	}

@@ -1,15 +1,15 @@
 package main
 
 import (
+	"Tree_nity/internal/engine"
+	"Tree_nity/internal/hashmap"
+	"Tree_nity/internal/topic"
 	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-	"Tree_nity/internal/engine"
-	"Tree_nity/internal/hashmap"
-	"Tree_nity/internal/topic"
 )
 
 func main() {
@@ -26,7 +26,7 @@ func main() {
 	}
 
 	<-ctx.Done()
-	
+
 	if err := server.Shutdown(5 * time.Second); err != nil {
 		fmt.Fprintf(os.Stderr, "error during server shutdown %v\n", err)
 		os.Exit(1)

@@ -11,7 +11,7 @@ import (
 func runCreate(serverFIFO, topic string) {
 	if !protocol.ValidateIdentifier(topic) {
 		fmt.Fprintf(os.Stderr, "error: invalid topic name: %s\n", topic)
-		os.Exit(protocol.ExitGeneral) // 1
+		os.Exit(protocol.ExitGeneral)
 	}
 
 	resp, err := sendRequest(serverFIFO, protocol.Request{
@@ -20,16 +20,16 @@ func runCreate(serverFIFO, topic string) {
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: communication failure: %v\n", err)
-		os.Exit(protocol.ExitIPC) // 3
+		os.Exit(protocol.ExitIPC)
 	}
 
 	if !resp.Success {
 		fmt.Fprintf(os.Stderr, "error: %s\n", resp.Message)
-		os.Exit(resp.ExitCode) // 2 already exists
+		os.Exit(resp.ExitCode)
 	}
 
 	fmt.Println("topic created")
-	os.Exit(protocol.ExitSuccess) // 0
+	os.Exit(protocol.ExitSuccess)
 }
 
 func runList(serverFIFO string) {
@@ -38,7 +38,7 @@ func runList(serverFIFO string) {
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: communication failure: %v\n", err)
-		os.Exit(protocol.ExitIPC) // 3
+		os.Exit(protocol.ExitIPC)
 	}
 
 	if !resp.Success {
@@ -53,13 +53,13 @@ func runList(serverFIFO string) {
 		fmt.Print(t)
 	}
 	fmt.Println()
-	os.Exit(protocol.ExitSuccess) // 0
+	os.Exit(protocol.ExitSuccess)
 }
 
 func runInfo(serverFIFO, clientID string) {
 	if !protocol.ValidateIdentifier(clientID) {
 		fmt.Fprintf(os.Stderr, "error: invalid subscriber name: %s\n", clientID)
-		os.Exit(protocol.ExitGeneral) // 1
+		os.Exit(protocol.ExitGeneral)
 	}
 
 	resp, err := sendRequest(serverFIFO, protocol.Request{
@@ -68,12 +68,12 @@ func runInfo(serverFIFO, clientID string) {
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: communication failure: %v\n", err)
-		os.Exit(protocol.ExitIPC) // 3
+		os.Exit(protocol.ExitIPC)
 	}
 
-	if !resp.Success || resp.Metadata == nil {
+	if !resp.Success {
 		fmt.Fprintf(os.Stderr, "error: %s\n", resp.Message)
-		os.Exit(resp.ExitCode) // 2
+		os.Exit(resp.ExitCode)
 	}
 
 	data, err := json.Marshal(resp.Metadata)
@@ -82,5 +82,5 @@ func runInfo(serverFIFO, clientID string) {
 		os.Exit(protocol.ExitGeneral)
 	}
 	fmt.Println(string(data))
-	os.Exit(protocol.ExitSuccess) // 0
+	os.Exit(protocol.ExitSuccess)
 }

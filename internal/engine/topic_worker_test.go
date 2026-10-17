@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"Tree_nity/internal/hashmap"
 	"Tree_nity/internal/ipc"
 	"Tree_nity/internal/topic"
 	"Tree_nity/internal/trie"
@@ -16,7 +17,8 @@ import (
 func TestTopicWorkerMessageDispatch(t *testing.T) {
 	store := topic.New()
 	matcher := trie.New()
-	worker := NewTopicWorker("orders", store, matcher)
+	clientMap := hashmap.New()
+	worker := NewTopicWorker("orders", store, matcher, clientMap)
 	worker.Start()
 	defer worker.Stop()
 
@@ -93,13 +95,14 @@ func TestTopicWorkerMessageDispatch(t *testing.T) {
 func TestTopicWorkerHistoricalReplay(t *testing.T) {
 	store := topic.New()
 	matcher := trie.New()
-	worker := NewTopicWorker("events", store, matcher)
+	clientMap := hashmap.New()
+	worker := NewTopicWorker("events", store, matcher, clientMap)
 	worker.Start()
 	defer worker.Stop()
 
-	store.Append("events", []byte("msg0\n"))
-	store.Append("events", []byte("msg1\n"))
-	store.Append("events", []byte("msg2\n"))
+	store.Append("events", "key0", []byte("msg0\n"))
+	store.Append("events", "key1", []byte("msg1\n"))
+	store.Append("events", "key2", []byte("msg2\n"))
 
 	serverPID := os.Getpid()
 	ch, err := ipc.NewConsumerChannel(serverPID, "late_subscriber")
@@ -126,5 +129,44 @@ func TestTopicWorkerHistoricalReplay(t *testing.T) {
 	}
 	if !bytes.Equal(buf[:n], expected) {
 		t.Fatalf("expected replay %q, got %q", expected, buf[:n])
+	}
+}
+
+func TestTopicWorkerHistoricalReplayPrefixFilter(t *testing.T) {
+	store := topic.New()
+	matcher := trie.New()
+	clientMap := hashmap.New()
+	worker := NewTopicWorker("orders", store, matcher, clientMap)
+	worker.Start()
+	defer worker.Stop()
+
+	store.Append("orders", "food.pizza", []byte("food.pizza:large\n"))
+	store.Append("orders", "tech.laptop", []byte("tech.laptop:thinkpad\n"))
+	store.Append("orders", "food.burger", []byte("food.burger:combo\n"))
+
+	serverPID := os.Getpid()
+	ch, err := ipc.NewConsumerChannel(serverPID, "food_subscriber")
+	if err != nil {
+		t.Fatalf("failed to create channel: %v", err)
+	}
+	defer ch.Close()
+
+	if err := worker.Subscribe("food_subscriber", "food", 0, ch); err != nil {
+		t.Fatalf("subscribe failed: %v", err)
+	}
+
+	r, err := ipc.OpenReader(ch.Path)
+	if err != nil {
+		t.Fatalf("open reader failed: %v", err)
+	}
+	defer r.Close()
+
+	expected := []byte("food.pizza:large\nfood.burger:combo\n")
+	buf := make([]byte, len(expected))
+	if _, err := io.ReadFull(r, buf); err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if !bytes.Equal(buf, expected) {
+		t.Fatalf("expected replay %q, got %q", expected, buf)
 	}
 }
