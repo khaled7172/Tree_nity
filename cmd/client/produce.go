@@ -14,42 +14,38 @@ import (
 )
 
 func runProduce(serverFIFO, topic string, isRaw bool) {
-	// 1. Validate topic name format
 	if !protocol.ValidateIdentifier(topic) {
 		fmt.Fprintf(os.Stderr, "error: invalid topic name: %s\n", topic)
-		os.Exit(protocol.ExitGeneral) // Exit 1
+		os.Exit(protocol.ExitGeneral)
 	}
 
-	// 2. Mandatory handshake: verify topic exists
 	resp, err := sendRequest(serverFIFO, protocol.Request{
 		Type:  protocol.CmdProduce,
 		Topic: topic,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: communication failure: %v\n", err)
-		os.Exit(protocol.ExitIPC) // Exit 3
+		os.Exit(protocol.ExitIPC)
 	}
 	if !resp.Success {
 		fmt.Fprintf(os.Stderr, "error: %s\n", resp.Message)
-		os.Exit(protocol.ExitTopic) // Exit 2 (Topic does not exist)
+		os.Exit(protocol.ExitTopic)
 	}
 
-	// 3. Open server pipe for message streaming
 	writer, err := ipc.OpenWriter(serverFIFO)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: failed to open server pipe: %v\n", err)
-		os.Exit(protocol.ExitIPC) // Exit 3
+		os.Exit(protocol.ExitIPC)
 	}
 	defer writer.Close()
 
-	// 4. Stream input based on mode
 	if isRaw {
 		streamRaw(writer, topic)
 	} else {
 		streamText(writer, topic)
 	}
 
-	os.Exit(protocol.ExitSuccess) // Exit 0
+	os.Exit(protocol.ExitSuccess)
 }
 
 func sendProduceMessage(w io.Writer, topic, key string, payload []byte) error {
@@ -73,14 +69,14 @@ func streamRaw(w io.Writer, topic string) {
 		key, val, err := protocol.DecodeBinaryProducer(os.Stdin)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return // Clean EOF on record boundary
+				return
 			}
 			if errors.Is(err, protocol.ErrPartialRecord) {
 				fmt.Fprintf(os.Stderr, "error: partial record at EOF\n")
-				os.Exit(protocol.ExitGeneral) // Exit 1 (Subject Chapter VIII.2)
+				os.Exit(protocol.ExitGeneral)
 			}
 			fmt.Fprintf(os.Stderr, "error reading binary record: %v\n", err)
-			os.Exit(protocol.ExitGeneral) // Exit 1
+			os.Exit(protocol.ExitGeneral)
 		}
 
 		var buf bytes.Buffer
@@ -91,7 +87,7 @@ func streamRaw(w io.Writer, topic string) {
 
 		if err := sendProduceMessage(w, topic, string(key), buf.Bytes()); err != nil {
 			fmt.Fprintf(os.Stderr, "error sending to server: %v\n", err)
-			os.Exit(protocol.ExitIPC) // Exit 3
+			os.Exit(protocol.ExitIPC)
 		}
 	}
 }
@@ -102,10 +98,10 @@ func streamText(w io.Writer, topic string) {
 		key, val, err := protocol.DecodeTextMessage(reader)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return // Clean EOF
+				return
 			}
 			fmt.Fprintf(os.Stderr, "error reading text message: %v\n", err)
-			os.Exit(protocol.ExitGeneral) // Exit 1
+			os.Exit(protocol.ExitGeneral)
 		}
 
 		var buf bytes.Buffer
@@ -116,7 +112,7 @@ func streamText(w io.Writer, topic string) {
 
 		if err := sendProduceMessage(w, topic, string(key), buf.Bytes()); err != nil {
 			fmt.Fprintf(os.Stderr, "error sending to server: %v\n", err)
-			os.Exit(protocol.ExitIPC) // Exit 3
+			os.Exit(protocol.ExitIPC)
 		}
 	}
 }

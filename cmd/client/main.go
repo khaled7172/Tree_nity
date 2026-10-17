@@ -10,19 +10,17 @@ import (
 )
 
 func main() {
-	// Usage: ./client <ipc_identifier> <command> [args...]
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "usage: %s <ipc_identifier> <create|list|info|produce|subscribe> [args...]\n", os.Args[0])
-		os.Exit(protocol.ExitGeneral) // Exit 1
+		os.Exit(protocol.ExitGeneral)
 	}
 
 	serverFIFO := os.Args[1]
 	command := os.Args[2]
 
-	// Verify that the provided IPC identifier exists and is a valid FIFO pipe
 	if !ipc.IsFifo(serverFIFO) {
 		fmt.Fprintf(os.Stderr, "error: invalid ipc identifier: %s is not a FIFO\n", serverFIFO)
-		os.Exit(protocol.ExitGeneral) // Exit 1 (Highest precedence)
+		os.Exit(protocol.ExitGeneral)
 	}
 
 	switch command {
@@ -69,7 +67,6 @@ func main() {
 		var offset *uint32
 		isRaw := false
 
-		// Parse flags: --prefix, --offset, --raw
 		args := os.Args[5:]
 		for i := 0; i < len(args); i++ {
 			switch args[i] {

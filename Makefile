@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: adadra <adadra@student.42beirut.com>       +#+  +:+       +#+         #
+#    By: khhammou <khhammou@student.42.fr>          +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
-#    Created: 2026/10/11 19:00:00 by adadra            #+#    #+#              #
-#    Updated: 2026/10/11 19:00:00 by adadra           ###   ########.fr        #
+#    Created: 2026/10/17 10:20:25 by khhammou          #+#    #+#              #
+#    Updated: 2026/10/17 10:20:26 by khhammou         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -16,7 +16,6 @@ GO         := go
 
 .PHONY: all clean re test help jammy-help $(SERVER_BIN) $(CLIENT_BIN)
 
-# Default target: compile both binaries
 all: $(SERVER_BIN) $(CLIENT_BIN)
 
 $(SERVER_BIN):

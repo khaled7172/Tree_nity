@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// testvalidateidentiifier verifies regex validation for topic names and client ID
 func TestValidateIdentifier(t *testing.T) {
 	validCases := []string{
 		"client0",

@@ -10,13 +10,20 @@ import (
 func TestAppendAndRead(t *testing.T) {
 	store := New()
 
-	store.Append("chat", []byte("msg0"))
-	store.Append("chat", []byte("msg1"))
-	store.Append("chat", []byte("msg2"))
+	store.Append("chat", "user.1", []byte("msg0"))
+	store.Append("chat", "user.2", []byte("msg1"))
+	store.Append("chat", "admin", []byte("msg2"))
+
+	if latest := store.LatestOffset("chat"); latest != 3 {
+		t.Fatalf("Expected latest offset 3, got %d", latest)
+	}
 
 	resAll := store.ReadFrom("chat", 0)
 	if len(resAll) != 3 {
 		t.Fatalf("Expected 3 messages, got %d", len(resAll))
+	}
+	if resAll[0].Key != "user.1" {
+		t.Errorf("Expected key user.1, got %s", resAll[0].Key)
 	}
 
 	resPartial := store.ReadFrom("chat", 1)
@@ -30,7 +37,7 @@ func TestAppendAndRead(t *testing.T) {
 
 func TestReadFromEdgeCases(t *testing.T) {
 	store := New()
-	store.Append("chat", []byte("hello"))
+	store.Append("chat", "key", []byte("hello"))
 
 	res1 := store.ReadFrom("ghost", 0)
 	if res1 != nil {
@@ -58,7 +65,7 @@ func TestTopicConcurrency(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			payload := []byte("payload_" + strconv.Itoa(id))
-			store.Append("spam", payload)
+			store.Append("spam", "key", payload)
 		}(i)
 
 		go func() {

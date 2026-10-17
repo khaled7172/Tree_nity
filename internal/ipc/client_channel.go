@@ -24,9 +24,9 @@ func ClientReplyEndpoint(clientPID int, seq uint64) string {
 
 type ConsumerChannel struct {
 	ClientID string
-	Path	 string
-	file	 *os.File
-	mu		 sync.Mutex
+	Path     string
+	file     *os.File
+	mu       sync.Mutex
 	isClosed bool
 }
 
@@ -45,8 +45,8 @@ func NewConsumerChannel(serverPID int, clientID string) (*ConsumerChannel, error
 
 	return &ConsumerChannel{
 		ClientID: clientID,
-		Path: path,
-		file: file,
+		Path:     path,
+		file:     file,
 	}, nil
 }
 

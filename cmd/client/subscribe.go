@@ -8,9 +8,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 
 	"Tree_nity/internal/ipc"
@@ -20,78 +17,53 @@ import (
 const ShutdownSentinel = "__TREENITY_SHUTDOWN__\n"
 
 func runSubscribe(serverFIFO, topic, clientID, prefix string, offset *uint32, isRaw bool) {
-	// 1. Validate topic and client ID format
 	if !protocol.ValidateIdentifier(topic) || !protocol.ValidateIdentifier(clientID) {
 		fmt.Fprintf(os.Stderr, "error: invalid topic or subscriber name\n")
-		os.Exit(protocol.ExitGeneral) // 1
+		os.Exit(protocol.ExitGeneral)
 	}
 
-	// 2. Subscribe registration request
 	req := protocol.Request{
 		Type:     protocol.CmdSubscribe,
 		Topic:    topic,
 		ClientID: clientID,
 		Prefix:   prefix,
 		Offset:   offset,
-		Raw:      isRaw,
 	}
 
 	resp, err := sendRequest(serverFIFO, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: communication failure: %v\n", err)
-		os.Exit(protocol.ExitIPC) // 3
+		os.Exit(protocol.ExitIPC)
 	}
 
 	if !resp.Success {
 		fmt.Fprintf(os.Stderr, "error: %s\n", resp.Message)
-		os.Exit(resp.ExitCode) // 2 for topic/client error (e.g. topic not found, duplicate subscriber)
+		os.Exit(resp.ExitCode)
 	}
 
-	// Determine starting offset
-	currentOffset := uint32(0)
+	currentOffset := resp.Metadata.Offset
 	if offset != nil {
 		currentOffset = *offset
-	} else if resp.Metadata != nil {
-		currentOffset = resp.Metadata.Offset
 	}
 
-	// Output (stdout) confirmation mandated by subject: "subscribed to <topic>"
 	fmt.Printf("subscribed to %s\n", topic)
 
-	// 3. Open dedicated consumer FIFO (use server-provided path, fallback to PID parsing)
-	consumerPath := ""
-	if resp.Metadata != nil && resp.Metadata.IPC != "" {
-		consumerPath = resp.Metadata.IPC
-	} else {
-		base := filepath.Base(serverFIFO)
-		parts := strings.Split(base, ".")
-		pid, err := strconv.Atoi(parts[len(parts)-1])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: invalid ipc identifier: %s\n", serverFIFO)
-			os.Exit(protocol.ExitGeneral)
-		}
-		consumerPath = ipc.ConsumerEndpoint(pid, clientID)
-	}
-
-	reader, err := ipc.OpenReader(consumerPath)
+	reader, err := ipc.OpenReader(resp.Metadata.IPC)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: failed to open consumer channel: %v\n", err)
-		os.Exit(protocol.ExitIPC) // 3
+		os.Exit(protocol.ExitIPC)
 	}
 	defer reader.Close()
 
-	// 4. Graceful signal handling (Ctrl+C / SIGINT / SIGTERM)
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	cleanupAndExit := func() {
-		// Send drain acknowledgment to server so server cleans up and persists offset
 		_, _ = sendRequest(serverFIFO, protocol.Request{
 			Type:     protocol.CmdDrainAck,
 			ClientID: clientID,
-			Offset:   &currentOffset,
 		})
-		os.Exit(protocol.ExitSuccess) // 0
+		os.Exit(protocol.ExitSuccess)
 	}
 
 	go func() {
@@ -99,7 +71,6 @@ func runSubscribe(serverFIFO, topic, clientID, prefix string, offset *uint32, is
 		cleanupAndExit()
 	}()
 
-	// 5. Message ingestion loop
 	bufReader := bufio.NewReader(reader)
 	if isRaw {
 		for {
@@ -125,20 +96,17 @@ func runSubscribe(serverFIFO, topic, clientID, prefix string, offset *uint32, is
 		for {
 			line, err := bufReader.ReadBytes('\n')
 			if err != nil {
-				// If pipe closed without sentinel, exit 0 on clean disconnect
 				break
 			}
 
-			// Check for shutdown sentinel pushed by server
 			if bytes.Equal(line, []byte(ShutdownSentinel)) {
 				cleanupAndExit()
 			}
 
-			// Output matching message directly to stdout
 			_, _ = os.Stdout.Write(line)
 			currentOffset++
 		}
 	}
 
-	os.Exit(protocol.ExitSuccess) // 0
+	os.Exit(protocol.ExitSuccess)
 }

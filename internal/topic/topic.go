@@ -4,6 +4,7 @@ import "sync"
 
 type Message struct {
 	Offset  uint32
+	Key     string
 	Payload []byte
 }
 
@@ -14,8 +15,9 @@ type TopicData struct {
 }
 
 type TopicStore interface {
-	Append(topic string, payload []byte) uint32
+	Append(topic string, key string, payload []byte) uint32
 	ReadFrom(topic string, offset uint32) []Message
+	LatestOffset(topic string) uint32
 }
 
 type Store struct {
@@ -31,7 +33,7 @@ func New() *Store {
 	}
 }
 
-func (s *Store) Append(topic string, payload []byte) uint32 {
+func (s *Store) Append(topic string, key string, payload []byte) uint32 {
 	s.mu.RLock()
 	td, exists := s.topics[topic]
 	s.mu.RUnlock()
@@ -52,6 +54,7 @@ func (s *Store) Append(topic string, payload []byte) uint32 {
 	offset := td.NextOffset
 	td.Messages = append(td.Messages, Message{
 		Offset:  offset,
+		Key:     key,
 		Payload: payload,
 	})
 	td.NextOffset++
@@ -79,4 +82,19 @@ func (s *Store) ReadFrom(topic string, offset uint32) []Message {
 	copy(result, td.Messages[offset:])
 
 	return result
+}
+
+func (s *Store) LatestOffset(topic string) uint32 {
+	s.mu.RLock()
+	td, exists := s.topics[topic]
+	s.mu.RUnlock()
+
+	if !exists {
+		return 0
+	}
+
+	td.mu.RLock()
+	defer td.mu.RUnlock()
+
+	return td.NextOffset
 }

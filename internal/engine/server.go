@@ -16,30 +16,30 @@ import (
 )
 
 type Server struct {
-	PID				int
-	Endpoint		string
-	file			*os.File
-	topicStore		topic.TopicStore
-	clientMap		hashmap.ClientMap
-	topicWorkers	map[string]*TopicWorker
-	consumers		map[string]*ipc.ConsumerChannel
-	mu				sync.RWMutex
-	ctx				context.Context
-	cancel			context.CancelFunc
-	wg				sync.WaitGroup
+	PID          int
+	Endpoint     string
+	file         *os.File
+	topicStore   topic.TopicStore
+	clientMap    hashmap.ClientMap
+	topicWorkers map[string]*TopicWorker
+	consumers    map[string]*ipc.ConsumerChannel
+	mu           sync.RWMutex
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
 }
 
 func NewServer(pid int, store topic.TopicStore, clientMap hashmap.ClientMap) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
-		PID: pid,
-		Endpoint: ipc.ServerEndpoint(pid),
-		topicStore: store,
-		clientMap: clientMap,
-		consumers: make(map[string]*ipc.ConsumerChannel),
+		PID:          pid,
+		Endpoint:     ipc.ServerEndpoint(pid),
+		topicStore:   store,
+		clientMap:    clientMap,
+		consumers:    make(map[string]*ipc.ConsumerChannel),
 		topicWorkers: make(map[string]*TopicWorker),
-		ctx: ctx,
-		cancel: cancel,
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 }
 
@@ -110,35 +110,15 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Stop() error {
-	s.cancel()
-
-	if s.file != nil {
-		_, _ = s.file.Write([]byte("{}\n"))
-		_ = s.file.Close()
-	}
-
-	s.wg.Wait()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for _, worker := range s.topicWorkers {
-		worker.Stop()
-	}
-
-	for _, ch := range s.consumers {
-		_ = ch.Close()
-	}
-
-	return ipc.RemoveFifo(s.Endpoint)
+	return s.Shutdown(0)
 }
 
 func (s *Server) handleCreate(req protocol.Request) {
 	if !protocol.ValidateIdentifier(req.Topic) {
 		s.sendReply(req.ReplyFIFO, protocol.Response{
-			Success: false,
+			Success:  false,
 			ExitCode: protocol.ExitGeneral,
-			Message: "invalid topic name",
+			Message:  "invalid topic name",
 		})
 		return
 	}
@@ -148,21 +128,21 @@ func (s *Server) handleCreate(req protocol.Request) {
 
 	if _, exists := s.topicWorkers[req.Topic]; exists {
 		s.sendReply(req.ReplyFIFO, protocol.Response{
-			Success: false,
+			Success:  false,
 			ExitCode: protocol.ExitTopic,
-			Message: "topic already exists",
+			Message:  "topic already exists",
 		})
 		return
 	}
 
-	worker := NewTopicWorker(req.Topic, s.topicStore, trie.New())
+	worker := NewTopicWorker(req.Topic, s.topicStore, trie.New(), s.clientMap)
 	worker.Start()
 	s.topicWorkers[req.Topic] = worker
 
 	s.sendReply(req.ReplyFIFO, protocol.Response{
-		Success: true,
+		Success:  true,
 		ExitCode: protocol.ExitSuccess,
-		Message: "topic created",
+		Message:  "topic created",
 	})
 }
 
@@ -175,18 +155,18 @@ func (s *Server) handleList(req protocol.Request) {
 	s.mu.RUnlock()
 
 	s.sendReply(req.ReplyFIFO, protocol.Response{
-		Success: true,
+		Success:  true,
 		ExitCode: protocol.ExitSuccess,
-		Topics: topics,
+		Topics:   topics,
 	})
 }
 
 func (s *Server) handleInfo(req protocol.Request) {
 	if !protocol.ValidateIdentifier(req.ClientID) {
 		s.sendReply(req.ReplyFIFO, protocol.Response{
-			Success: false,
+			Success:  false,
 			ExitCode: protocol.ExitGeneral,
-			Message: "invalid client name",
+			Message:  "invalid client name",
 		})
 		return
 	}
@@ -194,22 +174,22 @@ func (s *Server) handleInfo(req protocol.Request) {
 	meta, found := s.clientMap.Get(req.ClientID)
 	if !found {
 		s.sendReply(req.ReplyFIFO, protocol.Response{
-			Success: false,
+			Success:  false,
 			ExitCode: protocol.ExitTopic,
-			Message: "client not found",
+			Message:  "client not found",
 		})
 		return
 	}
 
 	s.sendReply(req.ReplyFIFO, protocol.Response{
-		Success: true,
+		Success:  true,
 		ExitCode: protocol.ExitSuccess,
 		Metadata: &protocol.ClientInfo{
 			Client: meta.ClientID,
-			Topic: meta.Topic,
+			Topic:  meta.Topic,
 			Offset: meta.Offset,
 			Prefix: meta.Prefix,
-			IPC: meta.IPCPath,
+			IPC:    meta.IPCPath,
 		},
 	})
 }
@@ -217,9 +197,9 @@ func (s *Server) handleInfo(req protocol.Request) {
 func (s *Server) handleSubscribe(req protocol.Request) {
 	if !protocol.ValidateIdentifier(req.Topic) || !protocol.ValidateIdentifier(req.ClientID) {
 		s.sendReply(req.ReplyFIFO, protocol.Response{
-			Success: false,
+			Success:  false,
 			ExitCode: protocol.ExitGeneral,
-			Message: "invalid topic or client name",
+			Message:  "invalid topic or client name",
 		})
 		return
 	}
@@ -229,19 +209,20 @@ func (s *Server) handleSubscribe(req protocol.Request) {
 	if !topicExists {
 		s.mu.Unlock()
 		s.sendReply(req.ReplyFIFO, protocol.Response{
-			Success: false,
+			Success:  false,
 			ExitCode: protocol.ExitTopic,
-			Message: "topic does not exist",
+			Message:  "topic does not exist",
 		})
 		return
 	}
 
-	if existing, found := s.clientMap.Get(req.ClientID); found && existing.IsActive {
+	existing, found := s.clientMap.Get(req.ClientID)
+	if found && existing.IsActive {
 		s.mu.Unlock()
 		s.sendReply(req.ReplyFIFO, protocol.Response{
-			Success: false,
+			Success:  false,
 			ExitCode: protocol.ExitTopic,
-			Message: "duplicate client name",
+			Message:  "duplicate client name",
 		})
 		return
 	}
@@ -249,7 +230,7 @@ func (s *Server) handleSubscribe(req protocol.Request) {
 	var startOffset uint32
 	if req.Offset != nil {
 		startOffset = *req.Offset
-	} else if existing, found := s.clientMap.Get(req.ClientID); found {
+	} else if found {
 		startOffset = existing.Offset
 	} else {
 		startOffset = 0
@@ -259,9 +240,9 @@ func (s *Server) handleSubscribe(req protocol.Request) {
 	if err != nil {
 		s.mu.Unlock()
 		s.sendReply(req.ReplyFIFO, protocol.Response{
-			Success: false,
+			Success:  false,
 			ExitCode: protocol.ExitIPC,
-			Message: "failed to create consumer channel",
+			Message:  "failed to create consumer channel",
 		})
 		return
 	}
@@ -269,10 +250,10 @@ func (s *Server) handleSubscribe(req protocol.Request) {
 	s.consumers[req.ClientID] = ch
 	_ = s.clientMap.Put(hashmap.ClientMetadata{
 		ClientID: req.ClientID,
-		Topic: req.Topic,
-		Offset: startOffset,
-		Prefix: req.Prefix,
-		IPCPath: ch.Path,
+		Topic:    req.Topic,
+		Offset:   startOffset,
+		Prefix:   req.Prefix,
+		IPCPath:  ch.Path,
 		IsActive: true,
 	})
 
@@ -301,9 +282,9 @@ func (s *Server) handleProduce(req protocol.Request) {
 	if !exists {
 		if req.ReplyFIFO != "" {
 			s.sendReply(req.ReplyFIFO, protocol.Response{
-				Success: false,
+				Success:  false,
 				ExitCode: protocol.ExitTopic,
-				Message: "topic does not exist",
+				Message:  "topic does not exist",
 			})
 		}
 		return
@@ -311,9 +292,9 @@ func (s *Server) handleProduce(req protocol.Request) {
 
 	if req.ReplyFIFO != "" {
 		s.sendReply(req.ReplyFIFO, protocol.Response{
-			Success: true,
+			Success:  true,
 			ExitCode: protocol.ExitSuccess,
-			Message: "topic exists",
+			Message:  "topic exists",
 		})
 	}
 
@@ -333,16 +314,16 @@ func (s *Server) handleDrainAck(req protocol.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if req.Offset != nil {
-		_ = s.clientMap.UpdateOffset(req.ClientID, *req.Offset)
-	}
-
 	if meta, found := s.clientMap.Get(req.ClientID); found {
 		meta.IsActive = false
 		if req.Offset != nil {
 			meta.Offset = *req.Offset
 		}
 		_ = s.clientMap.Put(meta)
+
+		if worker, exists := s.topicWorkers[meta.Topic]; exists {
+			worker.Unsubscribe(meta.ClientID, meta.Prefix)
+		}
 	}
 
 	if ch, exists := s.consumers[req.ClientID]; exists {
@@ -352,9 +333,9 @@ func (s *Server) handleDrainAck(req protocol.Request) {
 
 	if req.ReplyFIFO != "" {
 		s.sendReply(req.ReplyFIFO, protocol.Response{
-			Success: true,
+			Success:  true,
 			ExitCode: protocol.ExitSuccess,
-			Message: "acknowledged",
+			Message:  "acknowledged",
 		})
 	}
 }

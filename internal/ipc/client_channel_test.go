@@ -94,7 +94,7 @@ func TestWriteReplySuccess(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		time.Sleep(20 * time.Millisecond) // Let reader start
+		time.Sleep(20 * time.Millisecond)
 		if err := WriteReplyWithTimeout(replyPath, expectedMsg, 2*time.Second); err != nil {
 			t.Errorf("WriteReplyWithTimeout failed: %v", err)
 		}
